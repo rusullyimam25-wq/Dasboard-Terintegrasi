@@ -38,7 +38,7 @@ export interface UnifiedTicket {
   distributedAt?: string;
   distributedBy?: string;
   distributionNotes?: string;
-  intakeChannel?: "Call Center 24 Jam" | "WhatsApp CS" | "Loket Kantor" | "Mobile App" | "Media Sosial" | "Email" | "Walk In";
+  intakeChannel?: "WhatsApp CS" | "Telepon / Phone" | "Contact Center" | "Call Center 24 Jam" | "Email" | "Walk In" | "Loket Kantor" | "Mobile App" | "Media Sosial" | string;
   divisionAssignee?: string;
   divisionActionNotes?: string;
   resolutionSummary?: string;
