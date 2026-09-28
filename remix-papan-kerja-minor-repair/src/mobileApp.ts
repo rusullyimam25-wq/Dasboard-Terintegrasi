@@ -250,14 +250,42 @@ export function initMobileOfficerApp(container: HTMLElement): () => void {
   function el(tag: string, props: Record<string, any> = {}, ...children: any[]): HTMLElement {
     const element = document.createElement(tag);
     Object.keys(props).forEach((key) => {
+      const val = props[key];
+      if (val === undefined || val === null) return;
+
       if (key === "class" || key === "className") {
-        element.className = props[key];
+        element.className = String(val);
       } else if (key === "style") {
-        element.style.cssText = props[key];
-      } else if (key.startsWith("on") && typeof props[key] === "function") {
-        element.addEventListener(key.substring(2).toLowerCase(), props[key]);
+        element.style.cssText = String(val);
+      } else if (key.startsWith("on") && typeof val === "function") {
+        element.addEventListener(key.substring(2).toLowerCase(), val);
+      } else if (key === "disabled") {
+        const isDisabled = Boolean(val);
+        (element as HTMLButtonElement | HTMLInputElement).disabled = isDisabled;
+        if (isDisabled) {
+          element.setAttribute("disabled", "");
+        } else {
+          element.removeAttribute("disabled");
+        }
+      } else if (key === "checked") {
+        const isChecked = Boolean(val);
+        (element as HTMLInputElement).checked = isChecked;
+        if (isChecked) {
+          element.setAttribute("checked", "");
+        } else {
+          element.removeAttribute("checked");
+        }
+      } else if (key === "value") {
+        (element as HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement).value = String(val);
+        element.setAttribute("value", String(val));
+      } else if (typeof val === "boolean") {
+        if (val) {
+          element.setAttribute(key, "");
+        } else {
+          element.removeAttribute(key);
+        }
       } else {
-        element.setAttribute(key, props[key]);
+        element.setAttribute(key, String(val));
       }
     });
     children.flat().forEach((child) => {
@@ -1200,8 +1228,13 @@ export function initMobileOfficerApp(container: HTMLElement): () => void {
     const curDiv = ticket.targetDivision || selectedDivision;
     const otherDivs = DIVISION_ORDER.filter((d) => d !== curDiv);
     transferDestinationDivision = otherDivs[0] || "sales_support";
-    transferReason = "";
+    // Smart prefill reason preset based on destination
+    const defaultPreset = TRANSFER_REASON_PRESETS.find(
+      (p) => p.recommendedDivision === transferDestinationDivision
+    );
+    transferReason = defaultPreset ? defaultPreset.defaultText : "";
     transferUrgent = ticket.urgent || false;
+    transferLoading = false;
     transferModalOpen = true;
     render();
   }
@@ -1211,32 +1244,23 @@ export function initMobileOfficerApp(container: HTMLElement): () => void {
     const ticket = complaints.find((c) => c.id === transferTargetId);
     if (!ticket) return;
 
-    if (!transferReason.trim()) {
-      // @ts-ignore
-      if ((window as any).Swal) {
-        // @ts-ignore
-        (window as any).Swal.fire({
-          icon: "warning",
-          title: "Catatan Alasan Wajib Diisi",
-          text: "Silakan pilih salah satu opsi alasan cepat di atas atau tuliskan penjelasan alasan pengalihan pengerjaan WO ini.",
-        });
-      }
-      return;
-    }
-
-    transferLoading = true;
-    render();
-
     const fromDivision = ticket.targetDivision || selectedDivision;
     const fromMeta = DIVISIONS[fromDivision] || DIVISIONS.minor_repair;
     const toMeta = DIVISIONS[transferDestinationDivision] || DIVISIONS.sales_support;
+
+    const effectiveReason =
+      transferReason.trim() ||
+      `Pekerjaan dialihkan dari ${fromMeta.name} ke ${toMeta.name} untuk tindak lanjut operasional lapangan.`;
+
+    transferLoading = true;
+    render();
 
     // Update ticket fields
     ticket.targetDivision = transferDestinationDivision;
     ticket.distributionStatus = "distributed";
     ticket.distributedAt = new Date().toISOString();
     ticket.distributedBy = `${selectedOfficer} (${fromMeta.shortName})`;
-    ticket.distributionNotes = transferReason.trim();
+    ticket.distributionNotes = effectiveReason;
     if (transferUrgent) {
       ticket.urgent = true;
     }
@@ -1254,7 +1278,7 @@ export function initMobileOfficerApp(container: HTMLElement): () => void {
       authorDivision: fromDivision,
       authorRole: "Petugas Lapangan",
       targetDepartment: toMeta.name,
-      content: `[PENGALIHAN DIVISI] Pengerjaan dialihkan dari ${fromMeta.name} ke ${toMeta.name}. Alasan: ${transferReason.trim()}`,
+      content: `[PENGALIHAN DIVISI] Pengerjaan dialihkan dari ${fromMeta.name} ke ${toMeta.name}. Alasan: ${effectiveReason}`,
       createdAt: new Date().toISOString(),
     });
 
@@ -1274,13 +1298,15 @@ export function initMobileOfficerApp(container: HTMLElement): () => void {
       newStatus: "baru",
       actionType: "division_transferred",
       summary: `Pekerjaan dialihkan dari ${fromMeta.shortName} ke ${toMeta.name}.`,
-      details: transferReason.trim(),
-      transferReason: transferReason.trim(),
+      details: effectiveReason,
+      transferReason: effectiveReason,
       urgent: ticket.urgent,
     });
 
     transferLoading = false;
     transferModalOpen = false;
+    // CRITICAL: Re-render immediately so modal closes and ticket leaves the current queue
+    render();
 
     // @ts-ignore
     if ((window as any).Swal) {
@@ -1291,12 +1317,14 @@ export function initMobileOfficerApp(container: HTMLElement): () => void {
         html: `
           <div style="font-size:12.5px; color:#334155; line-height:1.45; text-align:left;">
             Work Order <b>${ticket.id}</b> telah dialihkan pengerjaannya dari <b>${fromMeta.shortName}</b> ke <b>${toMeta.name}</b>.<br/><br/>
-            📌 <b>Alasan:</b> <em>"${transferReason.trim()}"</em><br/><br/>
+            📌 <b>Alasan:</b> <em>"${effectiveReason}"</em><br/><br/>
             Tiket langsung masuk ke antrean kerja divisi tujuan dan tersinkron ke dashboard pengawas.
           </div>
         `,
         confirmButtonText: "Selesai",
         confirmButtonColor: toMeta.badgeColor,
+      }).then(() => {
+        render();
       });
     }
   }
@@ -2045,11 +2073,16 @@ export function initMobileOfficerApp(container: HTMLElement): () => void {
               el(
                 "button",
                 {
+                  type: "button",
                   class: "btn-secondary",
                   style:
-                    "font-size:11px; padding:5px 9px; background:#F5F3FF; border-color:#DDD6FE; color:#7C3AED; font-weight:700;",
+                    "font-size:11px; padding:5px 9px; background:#F5F3FF; border-color:#DDD6FE; color:#7C3AED; font-weight:700; cursor:pointer;",
                   title: "Alihkan pengerjaan tiket ini ke divisi lain",
-                  onclick: () => openTransferModal(nextPriorityTask),
+                  onclick: (e: Event) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    openTransferModal(nextPriorityTask);
+                  },
                 },
                 "🔄 Alihkan Divisi"
               )
@@ -2457,9 +2490,13 @@ export function initMobileOfficerApp(container: HTMLElement): () => void {
                     type: "button",
                     class: "mobile-act-btn",
                     style:
-                      "background:#F3E8FF; border:1px solid #D8B4FE; color:#7C3AED; font-weight:800; padding:6px 9px;",
+                      "background:#F3E8FF; border:1px solid #D8B4FE; color:#7C3AED; font-weight:800; padding:6px 9px; cursor:pointer;",
                     title: "Pindahkan pengerjaan Work Order ini ke divisi lain",
-                    onclick: () => openTransferModal(ticket),
+                    onclick: (e: Event) => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      openTransferModal(ticket);
+                    },
                   },
                   "🔄 Alihkan"
                 ),
@@ -3447,9 +3484,12 @@ export function initMobileOfficerApp(container: HTMLElement): () => void {
             el(
               "button",
               {
+                type: "button",
                 class: "close-btn",
-                style: "color:#6D28D9;",
-                onclick: () => {
+                style: "color:#6D28D9; cursor:pointer;",
+                onclick: (e: Event) => {
+                  e.preventDefault();
+                  e.stopPropagation();
                   if (!transferLoading) {
                     transferModalOpen = false;
                     render();
@@ -3531,17 +3571,32 @@ export function initMobileOfficerApp(container: HTMLElement): () => void {
                   const isSelected = transferDestinationDivision === divId;
                   const officers = getOfficersForDivision(divId);
                   return el(
-                    "div",
+                    "button",
                     {
-                      style: `cursor:pointer; padding:10px; border-radius:10px; border:2px solid ${
+                      type: "button",
+                      style: `width:100%; text-align:left; cursor:pointer; padding:10px; border-radius:10px; border:2px solid ${
                         isSelected ? meta.badgeColor : "#E2E8F0"
                       }; background:${
                         isSelected ? meta.badgeBg : "#FFFFFF"
                       }; transition:all 0.15s ease; box-shadow:${
                         isSelected ? "0 2px 8px rgba(0,0,0,0.08)" : "none"
-                      };`,
-                      onclick: () => {
+                      }; -webkit-tap-highlight-color:transparent;`,
+                      onclick: (e: Event) => {
+                        e.preventDefault();
+                        e.stopPropagation();
                         transferDestinationDivision = divId;
+                        const matchingPreset = TRANSFER_REASON_PRESETS.find(
+                          (p) => p.recommendedDivision === divId
+                        );
+                        if (
+                          matchingPreset &&
+                          (!transferReason.trim() ||
+                            TRANSFER_REASON_PRESETS.some(
+                              (p) => p.defaultText === transferReason
+                            ))
+                        ) {
+                          transferReason = matchingPreset.defaultText;
+                        }
                         render();
                       },
                     },
@@ -3617,8 +3672,10 @@ export function initMobileOfficerApp(container: HTMLElement): () => void {
                         isPresetActive ? "#7C3AED" : "#E2E8F0"
                       }; background:${
                         isPresetActive ? "#F5F3FF" : "#F8FAFC"
-                      }; cursor:pointer; font-size:11px; display:flex; align-items:center; gap:6px; transition:background 0.15s ease;`,
-                      onclick: () => {
+                      }; cursor:pointer; font-size:11px; display:flex; align-items:center; gap:6px; transition:background 0.15s ease; -webkit-tap-highlight-color:transparent;`,
+                      onclick: (e: Event) => {
+                        e.preventDefault();
+                        e.stopPropagation();
                         transferReason = preset.defaultText;
                         if (preset.recommendedDivision !== curDiv) {
                           transferDestinationDivision = preset.recommendedDivision;
@@ -3719,8 +3776,10 @@ export function initMobileOfficerApp(container: HTMLElement): () => void {
                   type: "button",
                   class: "btn-secondary",
                   disabled: transferLoading,
-                  style: "padding:8px 14px; font-size:12px; font-weight:700;",
-                  onclick: () => {
+                  style: "padding:8px 14px; font-size:12px; font-weight:700; cursor:pointer;",
+                  onclick: (e: Event) => {
+                    e.preventDefault();
+                    e.stopPropagation();
                     transferModalOpen = false;
                     render();
                   },
@@ -3733,8 +3792,12 @@ export function initMobileOfficerApp(container: HTMLElement): () => void {
                   type: "button",
                   class: "btn-primary",
                   disabled: transferLoading,
-                  style: `background:linear-gradient(135deg, ${destMeta.badgeColor} 0%, #4338CA 100%); border:none; padding:8px 16px; font-size:12px; font-weight:800; box-shadow:0 3px 10px rgba(0,0,0,0.15); display:inline-flex; align-items:center; gap:6px;`,
-                  onclick: submitTransferWorkOrder,
+                  style: `background:linear-gradient(135deg, ${destMeta.badgeColor} 0%, #4338CA 100%); border:none; padding:8px 16px; font-size:12px; font-weight:800; box-shadow:0 3px 10px rgba(0,0,0,0.15); display:inline-flex; align-items:center; gap:6px; cursor:${transferLoading ? "not-allowed" : "pointer"};`,
+                  onclick: (e: Event) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    submitTransferWorkOrder();
+                  },
                 },
                 transferLoading
                   ? el("span", {}, "⏳ Memindahkan...")
@@ -3793,8 +3856,12 @@ export function initMobileOfficerApp(container: HTMLElement): () => void {
             el(
               "button",
               {
+                type: "button",
                 class: "close-btn",
-                onclick: () => {
+                style: "cursor:pointer;",
+                onclick: (e: Event) => {
+                  e.preventDefault();
+                  e.stopPropagation();
                   switchDivisionModalOpen = false;
                   render();
                 },
@@ -3818,16 +3885,21 @@ export function initMobileOfficerApp(container: HTMLElement): () => void {
               ).length;
 
               return el(
-                "div",
+                "button",
                 {
-                  style: `cursor:pointer; border-radius:12px; border:2px solid ${
+                  type: "button",
+                  style: `width:100%; text-align:left; cursor:pointer; border-radius:12px; border:2px solid ${
                     isCurrent ? meta.badgeColor : "#E2E8F0"
                   }; background:${
                     isCurrent ? meta.badgeBg : "#FFFFFF"
                   }; padding:12px; display:flex; align-items:center; justify-content:space-between; gap:10px; transition:all 0.15s ease; box-shadow:${
                     isCurrent ? "0 2px 8px rgba(0,0,0,0.06)" : "none"
-                  };`,
-                  onclick: () => handleSwitchDivision(divId),
+                  }; -webkit-tap-highlight-color:transparent;`,
+                  onclick: (e: Event) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    handleSwitchDivision(divId);
+                  },
                 },
                 el(
                   "div",
