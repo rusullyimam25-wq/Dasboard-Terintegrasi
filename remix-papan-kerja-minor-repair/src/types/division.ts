@@ -118,6 +118,69 @@ export interface TicketComment {
   targetDepartment?: string;
 }
 
+export interface CaseCategoryItem {
+  key: string;
+  name: string;
+  defaultDiv: DivisionId;
+}
+
+/**
+ * Daftar Resmi 47 Jenis Case / Keluhan Pelanggan PT Aetra Air Tangerang
+ * (Sesuai Matriks Resmi Operasional Aetra)
+ */
+export const AETRA_CASE_CATEGORIES: CaseCategoryItem[] = [
+  // Kolom Kiri
+  { key: "BPPD", name: "Biaya Penambahan Pipa Dinas", defaultDiv: "sales_support" },
+  { key: "BPPDIND", name: "Biaya Penambahan Pipa Dinas Industri", defaultDiv: "key_account" },
+  { key: "INFO-PLG", name: "Info ke Pelanggan", defaultDiv: "sales_support" },
+  { key: "KATM", name: "Air Tidak Mengalir Domestic", defaultDiv: "technical_support" },
+  { key: "KATMIND", name: "Air Tidak Mengalir Industri", defaultDiv: "key_account" },
+  { key: "KATR", name: "Air Kotor Domestic", defaultDiv: "technical_support" },
+  { key: "KATRIND", name: "Air Kotor Industri", defaultDiv: "key_account" },
+  { key: "KBBP", name: "Sudah Bayar Belum Pasang Meter", defaultDiv: "sales_support" },
+  { key: "KBGL", name: "Bekas Galian", defaultDiv: "minor_repair" },
+  { key: "KBSM", name: "Bocor Sebelum Meter", defaultDiv: "minor_repair" },
+  { key: "KBSMIND", name: "Bocor Sebelum Meter Industri", defaultDiv: "key_account" },
+  { key: "KBTR", name: "Belum Menerima Tagihan", defaultDiv: "sales_support" },
+  { key: "KBTT", name: "Sudah Bayar Tapi di Tagih", defaultDiv: "sales_support" },
+  { key: "KILL", name: "Illegal Consumption", defaultDiv: "technical_support" },
+  { key: "KKMR", name: "Kran Meter Rusak", defaultDiv: "minor_repair" },
+  { key: "KKMRIND", name: "Kran Meter Rusak Industri", defaultDiv: "key_account" },
+  { key: "KLBC", name: "Pipa Jaringan Bocor", defaultDiv: "minor_repair" },
+  { key: "KMAL", name: "Meter Air Lepas", defaultDiv: "minor_repair" },
+  { key: "KMALIND", name: "Meter Air Lepas Industri", defaultDiv: "key_account" },
+  { key: "KMDT", name: "Meter Dipasang Terbalik", defaultDiv: "minor_repair" },
+  { key: "KMTA", name: "Meter Tidak Ada", defaultDiv: "technical_support" },
+  { key: "KPAP", name: "Perubahan Alamat Premise", defaultDiv: "sales_support" },
+  { key: "KPAT", name: "Perubahan Alamat Billing", defaultDiv: "sales_support" },
+  { key: "KPCT", name: "Pengajuan Cicilan Tagihan", defaultDiv: "sales_support" },
+
+  // Kolom Kanan
+  { key: "KPDB", name: "Double Bayar", defaultDiv: "sales_support" },
+  { key: "KPGP", name: "Permintaan Balik Nama", defaultDiv: "sales_support" },
+  { key: "KPKT", name: "Penyambungan Kembali Akibat Tunggakan", defaultDiv: "sales_support" },
+  { key: "KPMR", name: "Meter Rusak", defaultDiv: "minor_repair" },
+  { key: "KPMRIND", name: "Meter Rusak Industri", defaultDiv: "key_account" },
+  { key: "KPPA", name: "Revisi Nama", defaultDiv: "sales_support" },
+  { key: "KPPM", name: "Perilaku Pembaca Meter", defaultDiv: "technical_support" },
+  { key: "KPPR", name: "Pipa Dinas Rusak", defaultDiv: "minor_repair" },
+  { key: "KPPS", name: "Permintaan Pemutusan Sambungan", defaultDiv: "sales_support" },
+  { key: "KPPSIND", name: "Permintaan Pemutusan Sambungan Industri", defaultDiv: "key_account" },
+  { key: "KPSB", name: "Salah Bayar", defaultDiv: "sales_support" },
+  { key: "KPSM", name: "Petugas Penyegelan", defaultDiv: "technical_support" },
+  { key: "KRMT", name: "Permintaan Relokasi Meter (teknis)", defaultDiv: "minor_repair" },
+  { key: "KRPR", name: "Rekening Pembayaran Rendah", defaultDiv: "sales_support" },
+  { key: "KRPT", name: "Rekening Pembayaran Tinggi", defaultDiv: "sales_support" },
+  { key: "KSPM", name: "Meter Tertukar", defaultDiv: "technical_support" },
+  { key: "KTST", name: "Tidak Sesuai Tarif", defaultDiv: "sales_support" },
+  { key: "KTST-RC", name: "Tidak Sesuai Tarif - Re Class", defaultDiv: "sales_support" },
+  { key: "LAPUL", name: "Lapor Ulang", defaultDiv: "sales_support" },
+  { key: "PPMI", name: "Permintaan Penyesuaian Meter Industri", defaultDiv: "key_account" },
+  { key: "TERAREQ", name: "Tera Meter Request", defaultDiv: "technical_support" },
+  { key: "TR09", name: "Pindah Meter", defaultDiv: "minor_repair" },
+  { key: "TR09IND", name: "Pindah Meter Industri", defaultDiv: "key_account" },
+];
+
 /**
  * Smart Category to Division Mapping Rules
  */
@@ -136,34 +199,38 @@ export const CATEGORY_DIVISION_ROUTING: Record<string, DivisionId> = {
   TRO9: "minor_repair",
   TR09: "minor_repair",
   KBGL: "minor_repair",
+  KRMT: "minor_repair",
 
   // Operasional Sales Support
-  KRPT: "sales_support",
-  KRPR: "sales_support",
-  KPCT: "sales_support",
-  KPKT: "sales_support",
-  KPGP: "sales_support",
-  KPPA: "sales_support",
+  BPPD: "sales_support",
+  "INFO-PLG": "sales_support",
+  KBBP: "sales_support",
+  KBTR: "sales_support",
+  KBTT: "sales_support",
   KPAP: "sales_support",
   KPAT: "sales_support",
+  KPCT: "sales_support",
+  KPDB: "sales_support",
+  KPGP: "sales_support",
+  KPKT: "sales_support",
+  KPPA: "sales_support",
   KPPS: "sales_support",
   KPSB: "sales_support",
-  KBTT: "sales_support",
-  KBTR: "sales_support",
-  KBBP: "sales_support",
-  BPPD: "sales_support",
-  "KTST-RC": "sales_support",
+  KRPR: "sales_support",
+  KRPT: "sales_support",
   KTST: "sales_support",
+  "KTST-RC": "sales_support",
+  LAPUL: "sales_support",
 
   // Technical Key Account (Industri)
+  BPPDIND: "key_account",
   KATMIND: "key_account",
   KATRIND: "key_account",
   KBSMIND: "key_account",
-  KPMRIND: "key_account",
   KKMRIND: "key_account",
   KMALIND: "key_account",
+  KPMRIND: "key_account",
   KPPSIND: "key_account",
-  BPPDIND: "key_account",
   PPMI: "key_account",
   TRO9IND: "key_account",
   TR09IND: "key_account",
@@ -182,6 +249,7 @@ export const CATEGORY_DIVISION_ROUTING: Record<string, DivisionId> = {
   KMTA: "technical_support",
   KPSM: "technical_support",
   KPPM: "technical_support",
+  KSPM: "technical_support",
 };
 
 /**
@@ -192,7 +260,7 @@ export function getRecommendedDivision(categoryKey: string): DivisionId {
   if (CATEGORY_DIVISION_ROUTING[cleanKey]) {
     return CATEGORY_DIVISION_ROUTING[cleanKey];
   }
-  if (cleanKey.includes("IND")) {
+  if (cleanKey.endsWith("IND") || cleanKey.includes("IND") || cleanKey === "PPMI") {
     return "key_account";
   }
   return "minor_repair";

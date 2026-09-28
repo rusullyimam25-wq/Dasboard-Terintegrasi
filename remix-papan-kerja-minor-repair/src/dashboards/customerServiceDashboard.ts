@@ -4,7 +4,12 @@
  * Customer Service Dashboard - Gerbang Awal Penerimaan & Distribusi Komplain
  */
 
-import { DivisionId, DIVISIONS, getRecommendedDivision } from "../types/division";
+import {
+  DivisionId,
+  DIVISIONS,
+  getRecommendedDivision,
+  AETRA_CASE_CATEGORIES,
+} from "../types/division";
 import {
   UnifiedTicket,
   loadAllUnifiedTickets,
@@ -18,47 +23,48 @@ import { isViewItemVisible } from "../services/dashboardVisibilityService";
 import { createExecutiveAnalyticsView } from "../components/csExecutiveAnalyticsView";
 import { mountThirtyDayMovingAverageCard } from "../components/ThirtyDayMovingAverageCard";
 
+function generateRandom10DigitCaseId(): string {
+  const p1 = Math.floor(10 + Math.random() * 90);
+  const p2 = Math.floor(1000 + Math.random() * 9000);
+  const p3 = Math.floor(1000 + Math.random() * 9000);
+  return `${p1}${p2}${p3}`;
+}
+
+function getNowDateTimeLocal(): string {
+  const now = new Date();
+  const year = now.getFullYear();
+  const month = String(now.getMonth() + 1).padStart(2, "0");
+  const day = String(now.getDate()).padStart(2, "0");
+  const hours = String(now.getHours()).padStart(2, "0");
+  const minutes = String(now.getMinutes()).padStart(2, "0");
+  return `${year}-${month}-${day}T${hours}:${minutes}`;
+}
+
 export function renderCustomerServiceDashboard(container: HTMLElement): () => void {
   let tickets: UnifiedTicket[] = loadAllUnifiedTickets();
   let filterDivision: "all" | DivisionId | "unassigned" | "selesai" = "all";
   let searchQuery = "";
-  let formOpen = false;
+  let formOpen = true;
   let activeCsTab: "analytics" | "moving_avg" | "operational" =
     (localStorage.getItem("aetra_cs_active_view") as any) || "analytics";
 
-  // New ticket state
+  // New ticket state matching Image 1
+  let newCaseId = generateRandom10DigitCaseId();
   let newCustomer = "";
   let newPhone = "";
   let newMeterId = "";
   let newAddress = "";
   let newArea = "Cikupa";
-  let newCategory = "KBSM";
+  let newCategory = "BPPD";
+  let newReceivedAt = getNowDateTimeLocal();
   let newDesc = "";
+  let newCoords = "";
   let newUrgent = false;
   let newChannel: UnifiedTicket["intakeChannel"] = "WhatsApp CS";
-  let newTargetDivision: DivisionId = "minor_repair";
+  let newTargetDivision: DivisionId = getRecommendedDivision("BPPD");
   let newDistributionNotes = "";
 
   const AREAS = ["Cikupa", "Panongan", "Pasar Kemis", "Balaraja", "Curug", "Tigaraksa", "Rajeg"];
-
-  const CATEGORY_CHOICES = [
-    { key: "KBSM", label: "Bocor Sebelum Meter (Persil)", defaultDiv: "minor_repair" },
-    { key: "KP", label: "Pipa Persil Bocor", defaultDiv: "minor_repair" },
-    { key: "KKMR", label: "Kran Meter Rusak / Patah", defaultDiv: "minor_repair" },
-    { key: "KPMR", label: "Meter Rusak / Mati Total", defaultDiv: "minor_repair" },
-    { key: "KRPT", label: "Rekening Pembayaran Tinggi (Tagihan Melonjak)", defaultDiv: "sales_support" },
-    { key: "KPKT", label: "Penyambungan Kembali Akibat Tunggakan", defaultDiv: "sales_support" },
-    { key: "KPCT", label: "Pengajuan Cicilan Tagihan Rekening", defaultDiv: "sales_support" },
-    { key: "KPGP", label: "Permohonan Balik Nama Pelanggan", defaultDiv: "sales_support" },
-    { key: "BPPD", label: "Biaya Penambahan Pipa Dinas", defaultDiv: "sales_support" },
-    { key: "KATMIND", label: "Air Tidak Mengalir Industri / Pabrik", defaultDiv: "key_account" },
-    { key: "KATRIND", label: "Air Kotor / Keruh Industri", defaultDiv: "key_account" },
-    { key: "KBSMIND", label: "Bocor Pipa Kawasan Industri (> 2 inch)", defaultDiv: "key_account" },
-    { key: "KATR", label: "Air Keruh / Berbau Kawasan Domestik", defaultDiv: "technical_support" },
-    { key: "TERAREQ", label: "Permohonan Uji Tera Akurasi Meter", defaultDiv: "technical_support" },
-    { key: "KILL", label: "Dugaan Pemakaian Air Ilegal (Pencurian)", defaultDiv: "technical_support" },
-    { key: "KTR", label: "Tekanan Air Rendah / Aliran Kecil", defaultDiv: "technical_support" },
-  ];
 
   function refreshData() {
     tickets = loadAllUnifiedTickets();
@@ -71,69 +77,119 @@ export function renderCustomerServiceDashboard(container: HTMLElement): () => vo
     render();
   }
 
+  function fillQuickSampleData() {
+    newCaseId = generateRandom10DigitCaseId();
+    newCustomer = "Bpk. Bambang Wijaya, S.T.";
+    newPhone = "081298765432";
+    newMeterId = "MTR-88291";
+    newAddress = "Jl. Raya Serang Km 14 No. 42, RT 03/RW 01";
+    newArea = "Cikupa";
+    newCategory = "BPPD";
+    newTargetDivision = getRecommendedDivision("BPPD");
+    newReceivedAt = getNowDateTimeLocal();
+    newDesc = "Pelanggan mengajukan permohonan penambahan pipa dinas untuk perluasan sambungan gedung usaha ruko.";
+    newCoords = "-6.1783, 106.6319";
+    newUrgent = false;
+    render();
+  }
+
   function submitNewComplaint() {
-    if (!newCustomer.trim() || !newAddress.trim()) {
+    const caseIdEl = document.getElementById("cs-case-id") as HTMLInputElement;
+    const custEl = document.getElementById("cs-customer") as HTMLInputElement;
+    const phoneEl = document.getElementById("cs-phone") as HTMLInputElement;
+    const meterEl = document.getElementById("cs-meter") as HTMLInputElement;
+    const addrEl = document.getElementById("cs-address") as HTMLInputElement;
+    const areaEl = document.getElementById("cs-area") as HTMLSelectElement;
+    const catEl = document.getElementById("cs-category") as HTMLSelectElement;
+    const recvEl = document.getElementById("cs-received-at") as HTMLInputElement;
+    const descEl = document.getElementById("cs-desc") as HTMLTextAreaElement;
+    const coordsEl = document.getElementById("cs-coords") as HTMLInputElement;
+    const urgentEl = document.getElementById("cs-urgent") as HTMLInputElement;
+
+    const caseIdVal = caseIdEl?.value.trim() || newCaseId || generateRandom10DigitCaseId();
+    const custVal = custEl?.value.trim() || newCustomer.trim();
+    const phoneVal = phoneEl?.value.trim() || newPhone.trim() || "081298765432";
+    const meterVal = meterEl?.value.trim() || newMeterId.trim() || `MTR-${Math.floor(10000 + Math.random() * 90000)}`;
+    const addrVal = addrEl?.value.trim() || newAddress.trim() || `Area ${areaEl?.value || "Cikupa"}`;
+    const areaVal = areaEl?.value || newArea || "Cikupa";
+    const catVal = catEl?.value || newCategory || "BPPD";
+    const recvVal = recvEl?.value || newReceivedAt || getNowDateTimeLocal();
+    const descVal = descEl?.value.trim() || newDesc.trim() || "Detail komplain dicatat oleh Customer Service.";
+    const coordsVal = coordsEl?.value.trim() || newCoords.trim() || "-6.1783, 106.6319";
+    const urgentVal = urgentEl ? urgentEl.checked : newUrgent;
+
+    if (!custVal) {
       // @ts-ignore
       if (window.Swal) {
         // @ts-ignore
         window.Swal.fire({
           icon: "warning",
           title: "Lengkapi Data",
-          text: "Nama pelanggan dan alamat kejadian wajib diisi.",
+          text: "Nama pelanggan wajib diisi.",
+          confirmButtonColor: "#2563EB",
         });
+      } else {
+        alert("Nama pelanggan wajib diisi.");
       }
       return;
     }
 
-    const newId = `WO-${Date.now().toString().slice(-6)}`;
+    const newId = `WO-2026-${String(Date.now()).slice(-5)}`;
+    const targetDivision = getRecommendedDivision(catVal);
+
     const newTicket: UnifiedTicket = {
       id: newId,
-      caseId: generateCaseId(newId),
-      customer: newCustomer.trim(),
-      phone: newPhone.trim() || "081234567890",
-      meterId: newMeterId.trim() || `MTR-${Math.floor(10000 + Math.random() * 90000)}`,
-      address: newAddress.trim(),
-      area: newArea,
-      category: newCategory,
-      desc: newDesc.trim() || "Keluhan awal diterima oleh Customer Service.",
+      caseId: caseIdVal,
+      customer: custVal,
+      phone: phoneVal,
+      meterId: meterVal,
+      address: addrVal,
+      area: areaVal,
+      category: catVal,
+      desc: descVal,
       status: "baru",
-      urgent: newUrgent,
-      coords: "-6.2235, 106.5184",
-      receivedAt: new Date().toISOString(),
+      urgent: urgentVal,
+      coords: coordsVal,
+      receivedAt: recvVal ? new Date(recvVal).toISOString() : new Date().toISOString(),
       intakeChannel: newChannel,
-      targetDivision: newTargetDivision,
+      targetDivision,
       distributionStatus: "distributed",
       distributedAt: new Date().toISOString(),
       distributedBy: "Putri Delia (CS Dispatcher)",
-      distributionNotes: newDistributionNotes.trim() || `Komplain diteruskan ke ${DIVISIONS[newTargetDivision].name} untuk segera ditindaklanjuti.`,
+      distributionNotes: `Tiket kasus [${catVal}] otomatis dialirkan ke ${DIVISIONS[targetDivision].name}.`,
     };
 
     saveSingleTicket(newTicket);
     tickets.unshift(newTicket);
-    formOpen = false;
 
-    // Reset fields
+    // Reset fields for fresh entry
+    newCaseId = generateRandom10DigitCaseId();
     newCustomer = "";
     newPhone = "";
     newMeterId = "";
     newAddress = "";
     newDesc = "";
+    newCoords = "";
     newUrgent = false;
-    newDistributionNotes = "";
+    newReceivedAt = getNowDateTimeLocal();
 
     // @ts-ignore
     if (window.Swal) {
       // @ts-ignore
       window.Swal.fire({
         icon: "success",
-        title: "Komplain Berhasil Diterima & Didistribusikan! 🚀",
+        title: "Work Order Berhasil Disimpan! 🚀",
         html: `
-          <div style="font-size:13px; line-height:1.5; color:#334155;">
-            Tiket <b>${newTicket.id}</b> telah dicatat oleh Customer Service dan langsung diteruskan ke:<br/>
-            <b style="color:${DIVISIONS[newTargetDivision].badgeColor}; font-size:14px;">${DIVISIONS[newTargetDivision].name}</b>
+          <div style="font-size:13px; line-height:1.6; color:#334155; text-align:left; background:#F8FAFC; padding:12px; border-radius:8px; border:1px solid #E2E8F0;">
+            <div><b>No. WO:</b> <span style="font-family:monospace; color:#0284C7; font-weight:800;">${newTicket.id}</span></div>
+            <div><b>Case ID:</b> <span style="font-family:monospace; color:#4F46E5; font-weight:800;">${newTicket.caseId}</span></div>
+            <div><b>Pelanggan:</b> ${newTicket.customer} (${newTicket.phone})</div>
+            <div><b>Kasus:</b> [${newTicket.category}]</div>
+            <div><b>Area:</b> ${newTicket.area}</div>
+            <div><b>Divisi Tujuan:</b> <b style="color:${DIVISIONS[targetDivision].badgeColor};">${DIVISIONS[targetDivision].name}</b></div>
           </div>
         `,
-        confirmButtonColor: "#0284C7",
+        confirmButtonColor: "#2563EB",
       });
     }
 
@@ -525,201 +581,171 @@ export function renderCustomerServiceDashboard(container: HTMLElement): () => vo
       wrapper.appendChild(actionBar);
     }
 
-    // Collapsible Intake Form
+    // Form Input Work Order / Komplain Baru (Sesuai Gambar 1 & Gambar 2)
     if (formOpen && isViewItemVisible("customer_service", "cs_intake_form")) {
       const formCard = document.createElement("div");
-      formCard.style.cssText = `
-        background: #FFFFFF;
-        border: 2px solid #BFDBFE;
-        border-radius: 16px;
-        padding: 20px;
-        display: flex;
-        flex-direction: column;
-        gap: 16px;
-        box-shadow: 0 10px 25px rgba(2,132,199,0.08);
-      `;
+      formCard.className = "bg-white border border-slate-200 rounded-xl p-5 md:p-6 shadow-sm mb-4";
+      formCard.style.cssText = "box-shadow: 0 1px 4px rgba(0,0,0,0.06);";
 
       formCard.innerHTML = `
-        <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #E2E8F0; padding-bottom: 12px;">
-          <div>
-            <h3 style="margin: 0; font-size: 15px; font-weight: 800; color: #0369A1;">
-              📝 Form Input Penerimaan Pengaduan & Rekomendasi Routing Divisi
-            </h3>
-            <div style="font-size: 11.5px; color: #64748B; margin-top: 2px;">
-              Petugas CS mencatat identitas keluhan lalu sistem secara cerdas merekomendasikan divisi eksekusi terkait.
+        <!-- Form Header -->
+        <div class="flex items-center justify-between pb-4 border-b border-slate-100 mb-4 flex-wrap gap-2">
+          <h2 class="text-base font-bold text-slate-800 flex items-center gap-2 m-0">
+            <span class="text-lg text-slate-700 font-bold">+</span> Tambah Work Order / Komplain Baru
+          </h2>
+          <button type="button" id="btn-quick-sample-data" class="px-3.5 py-1.5 bg-sky-50 hover:bg-sky-100 text-sky-600 border border-sky-200 rounded-lg text-xs font-bold flex items-center gap-1.5 transition cursor-pointer shadow-xs">
+            <span>⚡</span> Isi Contoh Data Cepat
+          </button>
+        </div>
+
+        <!-- Form Fields Grid -->
+        <div class="space-y-4 text-xs">
+          <!-- BARIS 1: 4 Kolom (Case ID, Nama Pelanggan, No WhatsApp, ID Meter) -->
+          <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+            <!-- Kolom 1: Case ID (Kode Unik Kasus) * -->
+            <div>
+              <div class="flex items-center justify-between mb-1">
+                <label class="text-xs font-semibold text-slate-700">Case ID (Kode Unik Kasus) *</label>
+                <button type="button" id="btn-refresh-case-id" class="px-2 py-0.5 text-[10.5px] font-bold text-blue-600 bg-blue-50 hover:bg-blue-100 rounded border border-blue-200 flex items-center gap-1 transition cursor-pointer">
+                  <span>🔄</span> Acak Baru
+                </button>
+              </div>
+              <input type="text" id="cs-case-id" value="${newCaseId}" class="w-full px-3 py-2 bg-indigo-50/70 border border-indigo-200 rounded-lg text-indigo-700 font-bold font-mono text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400" />
+              <div class="text-[10px] text-slate-400 mt-1 leading-tight">
+                Kode unik agar jika 1 orang punya 2 kasus sama, ID tetap berbeda.
+              </div>
+            </div>
+
+            <!-- Kolom 2: Nama Pelanggan * -->
+            <div>
+              <label class="block text-xs font-semibold text-slate-700 mb-1">Nama Pelanggan *</label>
+              <input type="text" id="cs-customer" placeholder="Nama Pelanggan" value="${newCustomer}" class="w-full px-3 py-2 bg-white border border-slate-300 rounded-lg text-xs text-slate-800 placeholder-slate-400 focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500" />
+            </div>
+
+            <!-- Kolom 3: No WhatsApp -->
+            <div>
+              <label class="block text-xs font-semibold text-slate-700 mb-1">No WhatsApp</label>
+              <input type="text" id="cs-phone" placeholder="No WA (08xxxxxxxxxx)" value="${newPhone}" class="w-full px-3 py-2 bg-white border border-slate-300 rounded-lg text-xs text-slate-800 placeholder-slate-400 focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500" />
+            </div>
+
+            <!-- Kolom 4: ID Meter -->
+            <div>
+              <label class="block text-xs font-semibold text-slate-700 mb-1">ID Meter</label>
+              <input type="text" id="cs-meter" placeholder="ID Meter / Langganan" value="${newMeterId}" class="w-full px-3 py-2 bg-white border border-slate-300 rounded-lg text-xs text-slate-800 placeholder-slate-400 focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500" />
             </div>
           </div>
-          <span style="font-size: 11px; font-weight: 800; background: #ECFDF5; color: #059669; padding: 4px 10px; border-radius: 12px; border: 1px solid #A7F3D0;">
-            Otomatis Tersinkronisasi
-          </span>
+
+          <!-- BARIS 2: 2 Kolom (Alamat Lengkap & Area / Kecamatan) -->
+          <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div>
+              <label class="block text-xs font-semibold text-slate-700 mb-1">Alamat Lengkap</label>
+              <input type="text" id="cs-address" placeholder="Alamat Lengkap" value="${newAddress}" class="w-full px-3 py-2 bg-white border border-slate-300 rounded-lg text-xs text-slate-800 placeholder-slate-400 focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500" />
+            </div>
+            <div>
+              <label class="block text-xs font-semibold text-slate-700 mb-1">Area / Kecamatan</label>
+              <select id="cs-area" class="w-full px-3 py-2 bg-white border border-slate-300 rounded-lg text-xs text-slate-800 focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500">
+                ${AREAS.map((a) => `<option value="${a}" ${newArea === a ? "selected" : ""}>${a}</option>`).join("")}
+              </select>
+            </div>
+          </div>
+
+          <!-- BARIS 3: 2 Kolom (CASE Keluhan & Waktu Diterima) -->
+          <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div>
+              <div class="flex items-center justify-between mb-1">
+                <label class="block text-xs font-semibold text-slate-700">CASE Keluhan (Pilih Jenis Case)</label>
+                <span id="cs-routing-badge" class="text-[10px] font-bold text-sky-700 bg-sky-50 px-2 py-0.5 rounded border border-sky-200">
+                  Rekomendasi: ${DIVISIONS[newTargetDivision].name}
+                </span>
+              </div>
+              <select id="cs-category" class="w-full px-3 py-2 bg-white border border-slate-300 rounded-lg text-xs text-slate-800 focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500">
+                ${AETRA_CASE_CATEGORIES.map(
+                  (c) => `<option value="${c.key}" ${newCategory === c.key ? "selected" : ""}>[${c.key}] ${c.name}</option>`
+                ).join("")}
+              </select>
+            </div>
+            <div>
+              <label class="block text-xs font-semibold text-slate-700 mb-1">Waktu Diterima</label>
+              <div class="relative">
+                <input type="datetime-local" id="cs-received-at" value="${newReceivedAt}" class="w-full px-3 py-2 bg-white border border-slate-300 rounded-lg text-xs text-slate-800 focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500" />
+              </div>
+            </div>
+          </div>
+
+          <!-- BARIS 4: 2 Kolom (Deskripsi Keluhan & Koordinat GPS) -->
+          <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div>
+              <label class="block text-xs font-semibold text-slate-700 mb-1">Deskripsi Keluhan</label>
+              <textarea id="cs-desc" rows="3" placeholder="Detail komplain..." class="w-full px-3 py-2 bg-white border border-slate-300 rounded-lg text-xs text-slate-800 placeholder-slate-400 focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500">${newDesc}</textarea>
+            </div>
+            <div>
+              <label class="block text-xs font-semibold text-slate-700 mb-1">Koordinat GPS</label>
+              <input type="text" id="cs-coords" placeholder="-6.1783, 106.6319 (opsional)" value="${newCoords}" class="w-full px-3 py-2 bg-white border border-slate-300 rounded-lg text-xs text-slate-800 placeholder-slate-400 focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500" />
+            </div>
+          </div>
+
+          <!-- BARIS 5: Checkbox Prioritas Utama -->
+          <div class="pt-1">
+            <label class="inline-flex items-center gap-2 cursor-pointer text-xs font-medium text-slate-800 select-none">
+              <input type="checkbox" id="cs-urgent" ${newUrgent ? "checked" : ""} class="w-4 h-4 rounded text-blue-600 border-slate-300 focus:ring-blue-500" />
+              <span>Tandai mendesak (Prioritas Utama)</span>
+            </label>
+          </div>
+
+          <!-- BARIS 6: Tombol Simpan Komplain & Batal -->
+          <div class="flex items-center gap-2 pt-2">
+            <button type="button" id="btn-submit-complaint" class="px-5 py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-xs font-bold transition shadow-sm cursor-pointer flex items-center gap-1.5">
+              <span>Simpan Komplain</span>
+            </button>
+            <button type="button" id="btn-cancel-complaint" class="px-5 py-2.5 bg-white hover:bg-slate-50 text-slate-700 border border-slate-300 rounded-lg text-xs font-semibold transition shadow-sm cursor-pointer">
+              Batal
+            </button>
+          </div>
         </div>
       `;
-
-      // Inputs Grid
-      const inputsGrid = document.createElement("div");
-      inputsGrid.style.cssText = "display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 14px;";
-
-      // 1. Channel & Sambungan
-      const col1 = document.createElement("div");
-      col1.style.cssText = "display: flex; flex-direction: column; gap: 10px;";
-      col1.innerHTML = `
-        <div>
-          <label style="font-size: 11px; font-weight: 800; color: #1E293B;">Saluran Masuk Pengaduan:</label>
-          <select id="cs-channel" style="width: 100%; padding: 8px 10px; border-radius: 8px; border: 1px solid #CBD5E1; font-size: 12px; font-weight: 700; margin-top: 4px;">
-            <option value="WhatsApp CS" ${newChannel === "WhatsApp CS" ? "selected" : ""}>💬 WhatsApp Resmi CS</option>
-            <option value="Call Center 24 Jam" ${newChannel === "Call Center 24 Jam" ? "selected" : ""}>☎️ Call Center 24 Jam (021-5989800)</option>
-            <option value="Loket Kantor" ${newChannel === "Loket Kantor" ? "selected" : ""}>🏢 Loket Pelayanan Kantor Posko</option>
-            <option value="Mobile App" ${newChannel === "Mobile App" ? "selected" : ""}>📱 Mobile App Pelanggan</option>
-            <option value="Media Sosial" ${newChannel === "Media Sosial" ? "selected" : ""}>🌐 Media Sosial / Website</option>
-          </select>
-        </div>
-        <div>
-          <label style="font-size: 11px; font-weight: 800; color: #1E293B;">Nama Pelanggan:</label>
-          <input id="cs-customer" type="text" placeholder="Contoh: Bpk. Bambang Wijaya" value="${newCustomer}" style="width: 100%; box-sizing: border-box; padding: 8px 10px; border-radius: 8px; border: 1px solid #CBD5E1; font-size: 12px; margin-top: 4px;" />
-        </div>
-        <div>
-          <label style="font-size: 11px; font-weight: 800; color: #1E293B;">No. Telepon / WhatsApp:</label>
-          <input id="cs-phone" type="text" placeholder="Contoh: 081299887766" value="${newPhone}" style="width: 100%; box-sizing: border-box; padding: 8px 10px; border-radius: 8px; border: 1px solid #CBD5E1; font-size: 12px; margin-top: 4px;" />
-        </div>
-      `;
-
-      // 2. Meter ID & Address
-      const col2 = document.createElement("div");
-      col2.style.cssText = "display: flex; flex-direction: column; gap: 10px;";
-      col2.innerHTML = `
-        <div>
-          <label style="font-size: 11px; font-weight: 800; color: #1E293B;">No. Sambungan / Meter Air:</label>
-          <input id="cs-meter" type="text" placeholder="Contoh: MTR-98210" value="${newMeterId}" style="width: 100%; box-sizing: border-box; padding: 8px 10px; border-radius: 8px; border: 1px solid #CBD5E1; font-size: 12px; margin-top: 4px; font-family: monospace;" />
-        </div>
-        <div>
-          <label style="font-size: 11px; font-weight: 800; color: #1E293B;">Wilayah / Area Pelayanan:</label>
-          <select id="cs-area" style="width: 100%; padding: 8px 10px; border-radius: 8px; border: 1px solid #CBD5E1; font-size: 12px; font-weight: 600; margin-top: 4px;">
-            ${AREAS.map((a) => `<option value="${a}" ${newArea === a ? "selected" : ""}>${a}</option>`).join("")}
-          </select>
-        </div>
-        <div>
-          <label style="font-size: 11px; font-weight: 800; color: #1E293B;">Alamat Kejadian / Lokasi:</label>
-          <textarea id="cs-address" placeholder="Nama jalan, RT/RW, nomor rumah, patokan lokasi..." style="width: 100%; box-sizing: border-box; padding: 8px 10px; border-radius: 8px; border: 1px solid #CBD5E1; font-size: 12px; min-height: 52px; margin-top: 4px;">${newAddress}</textarea>
-        </div>
-      `;
-
-      // 3. Category & Target Division
-      const col3 = document.createElement("div");
-      col3.style.cssText = "display: flex; flex-direction: column; gap: 10px;";
-
-      const catSelectWrapper = document.createElement("div");
-      catSelectWrapper.innerHTML = `
-        <label style="font-size: 11px; font-weight: 800; color: #1E293B;">Kategori Keluhan:</label>
-        <select id="cs-category" style="width: 100%; padding: 8px 10px; border-radius: 8px; border: 1px solid #CBD5E1; font-size: 12px; font-weight: 700; margin-top: 4px; color: #0284C7;">
-          ${CATEGORY_CHOICES.map(
-            (c) => `<option value="${c.key}" ${newCategory === c.key ? "selected" : ""}>[${c.key}] ${c.label}</option>`
-          ).join("")}
-        </select>
-      `;
-
-      const routingCard = document.createElement("div");
-      routingCard.style.cssText = `
-        background: ${DIVISIONS[newTargetDivision].badgeBg};
-        border: 1.5px solid ${DIVISIONS[newTargetDivision].borderColor};
-        border-radius: 10px;
-        padding: 10px;
-      `;
-      routingCard.innerHTML = `
-        <div style="font-size: 10.5px; font-weight: 800; color: ${DIVISIONS[newTargetDivision].badgeColor}; text-transform: uppercase;">
-          🎯 REKOMENDASI DIVISI TUJUAN:
-        </div>
-        <div style="font-size: 13px; font-weight: 800; color: #0F172A; margin: 3px 0;">
-          ${DIVISIONS[newTargetDivision].icon} ${DIVISIONS[newTargetDivision].name}
-        </div>
-        <div style="font-size: 11px; color: #475569;">
-          ${DIVISIONS[newTargetDivision].tagline}
-        </div>
-      `;
-
-      const targetDivSelector = document.createElement("div");
-      targetDivSelector.innerHTML = `
-        <label style="font-size: 11px; font-weight: 800; color: #1E293B; display: block; margin-bottom: 4px;">Ubah Divisi Tujuan (Jika Perlu):</label>
-        <select id="cs-target-div" style="width: 100%; padding: 8px 10px; border-radius: 8px; border: 1px solid #CBD5E1; font-size: 12px; font-weight: 700;">
-          <option value="minor_repair" ${newTargetDivision === "minor_repair" ? "selected" : ""}>🛠️ Divisi Minor Repair</option>
-          <option value="sales_support" ${newTargetDivision === "sales_support" ? "selected" : ""}>💼 Operasional Sales Support</option>
-          <option value="key_account" ${newTargetDivision === "key_account" ? "selected" : ""}>🏢 Technical Key Account</option>
-          <option value="technical_support" ${newTargetDivision === "technical_support" ? "selected" : ""}>🔬 Technical Support & Lab</option>
-        </select>
-      `;
-
-      col3.appendChild(catSelectWrapper);
-      col3.appendChild(routingCard);
-      col3.appendChild(targetDivSelector);
-
-      inputsGrid.appendChild(col1);
-      inputsGrid.appendChild(col2);
-      inputsGrid.appendChild(col3);
-      formCard.appendChild(inputsGrid);
-
-      // Bottom Instructions & Submit
-      const bottomRow = document.createElement("div");
-      bottomRow.style.cssText = "display: flex; justify-content: space-between; align-items: flex-end; flex-wrap: wrap; gap: 12px; border-top: 1px solid #E2E8F0; padding-top: 14px;";
-
-      const notesBox = document.createElement("div");
-      notesBox.style.cssText = "flex: 1; min-width: 280px;";
-      notesBox.innerHTML = `
-        <label style="font-size: 11px; font-weight: 800; color: #1E293B;">Catatan / Instruksi Pengawalan CS untuk Divisi Tujuan:</label>
-        <input id="cs-notes" type="text" placeholder="Contoh: Harap segera dicek karena ada genangan di jalan raya / berkas kwitansi lunas sudah diverifikasi" value="${newDistributionNotes}" style="width: 100%; box-sizing: border-box; padding: 8px 10px; border-radius: 8px; border: 1px solid #CBD5E1; font-size: 12px; margin-top: 4px;" />
-      `;
-
-      const submitBtns = document.createElement("div");
-      submitBtns.style.cssText = "display: flex; gap: 8px;";
-
-      const cancelBtn = document.createElement("button");
-      cancelBtn.type = "button";
-      cancelBtn.innerText = "Batal";
-      cancelBtn.style.cssText = "padding: 10px 16px; border: 1px solid #CBD5E1; background: #F8FAFC; border-radius: 10px; font-size: 12px; font-weight: 700; cursor: pointer;";
-      cancelBtn.onclick = () => {
-        formOpen = false;
-        render();
-      };
-
-      const sendBtn = document.createElement("button");
-      sendBtn.type = "button";
-      sendBtn.style.cssText = "padding: 10px 20px; background: linear-gradient(135deg, #10B981 0%, #059669 100%); color: #FFFFFF; border: none; border-radius: 10px; font-size: 12.5px; font-weight: 800; cursor: pointer; display: inline-flex; align-items: center; gap: 6px; box-shadow: 0 3px 10px rgba(16,185,129,0.3);";
-      sendBtn.innerHTML = "<span>🚀 Simpan & Distribusikan Tiket</span>";
-
-      sendBtn.onclick = () => {
-        const custEl = document.getElementById("cs-customer") as HTMLInputElement;
-        const phoneEl = document.getElementById("cs-phone") as HTMLInputElement;
-        const meterEl = document.getElementById("cs-meter") as HTMLInputElement;
-        const addrEl = document.getElementById("cs-address") as HTMLTextAreaElement;
-        const areaEl = document.getElementById("cs-area") as HTMLSelectElement;
-        const chanEl = document.getElementById("cs-channel") as HTMLSelectElement;
-        const notesEl = document.getElementById("cs-notes") as HTMLInputElement;
-        const divEl = document.getElementById("cs-target-div") as HTMLSelectElement;
-
-        newCustomer = custEl.value;
-        newPhone = phoneEl.value;
-        newMeterId = meterEl.value;
-        newAddress = addrEl.value;
-        newArea = areaEl.value;
-        newChannel = chanEl.value as any;
-        newDistributionNotes = notesEl.value;
-        newTargetDivision = divEl.value as DivisionId;
-
-        submitNewComplaint();
-      };
-
-      submitBtns.appendChild(cancelBtn);
-      submitBtns.appendChild(sendBtn);
-
-      bottomRow.appendChild(notesBox);
-      bottomRow.appendChild(submitBtns);
-      formCard.appendChild(bottomRow);
 
       wrapper.appendChild(formCard);
 
-      // Event listener for category selection change
+      // Event Listeners for the intake form
       setTimeout(() => {
+        const quickDataBtn = document.getElementById("btn-quick-sample-data") as HTMLButtonElement;
+        if (quickDataBtn) {
+          quickDataBtn.onclick = () => fillQuickSampleData();
+        }
+
+        const refreshCaseIdBtn = document.getElementById("btn-refresh-case-id") as HTMLButtonElement;
+        if (refreshCaseIdBtn) {
+          refreshCaseIdBtn.onclick = () => {
+            newCaseId = generateRandom10DigitCaseId();
+            const caseIdInput = document.getElementById("cs-case-id") as HTMLInputElement;
+            if (caseIdInput) caseIdInput.value = newCaseId;
+          };
+        }
+
         const catSelect = document.getElementById("cs-category") as HTMLSelectElement;
         if (catSelect) {
-          catSelect.onchange = (e: any) => handleCategoryChange(e.target.value);
+          catSelect.onchange = (e: any) => {
+            const val = e.target.value;
+            newCategory = val;
+            newTargetDivision = getRecommendedDivision(val);
+            const badge = document.getElementById("cs-routing-badge");
+            if (badge) {
+              badge.innerText = `Rekomendasi: ${DIVISIONS[newTargetDivision].name}`;
+            }
+          };
+        }
+
+        const submitBtn = document.getElementById("btn-submit-complaint") as HTMLButtonElement;
+        if (submitBtn) {
+          submitBtn.onclick = () => submitNewComplaint();
+        }
+
+        const cancelBtn = document.getElementById("btn-cancel-complaint") as HTMLButtonElement;
+        if (cancelBtn) {
+          cancelBtn.onclick = () => {
+            formOpen = false;
+            render();
+          };
         }
       }, 0);
     }

@@ -11,7 +11,7 @@ import {
   saveSingleTicket,
   generateCaseId,
 } from "../services/divisionTicketService";
-import { DivisionId, DIVISIONS } from "../types/division";
+import { DivisionId, DIVISIONS, AETRA_CASE_CATEGORIES, getRecommendedDivision } from "../types/division";
 import * as XLSX from "xlsx";
 import { mountThirtyDayMovingAverageCard } from "./ThirtyDayMovingAverageCard";
 
@@ -1490,15 +1490,7 @@ function openQuickTicketModal(onCreated: () => void) {
           <div>
             <label class="block text-[10px] text-slate-400 uppercase font-bold mb-1">Kategori Kasus</label>
             <select id="quick-category" class="w-full px-2 py-1.5 bg-slate-950 border border-slate-700 rounded text-slate-200 focus:outline-none focus:border-sky-500">
-              <option value="KBSM">KBSM (Bocor Sebelum Meter)</option>
-              <option value="KKMR">KKMR (Kran Meter Rusak)</option>
-              <option value="KPMR">KPMR (Meter Air Macet/Rusak)</option>
-              <option value="KATM">KATM (Air Mati Domestik)</option>
-              <option value="KRPT">KRPT (Rekening Tinggi/Melonjak)</option>
-              <option value="KPKT">KPKT (Sambung Kembali Tunggakan)</option>
-              <option value="KATR">KATR (Air Keruh / Berbau)</option>
-              <option value="KATMIND">KATMIND (Air Mati Industri)</option>
-              <option value="TERAREQ">TERAREQ (Uji Tera Akurasi)</option>
+              ${AETRA_CASE_CATEGORIES.map((c) => `<option value="${c.key}">[${c.key}] ${c.name}</option>`).join("")}
             </select>
           </div>
           <div>
@@ -1542,15 +1534,8 @@ function openQuickTicketModal(onCreated: () => void) {
     const newId = `WO-2026-${String(Date.now()).slice(-4)}`;
     const newCaseId = generateCaseId(newId);
 
-    // Determine target division
-    let targetDivision: DivisionId = "minor_repair";
-    if (["KRPT", "KPKT", "KPCT", "KPGP", "BPPD"].includes(catInput)) {
-      targetDivision = "sales_support";
-    } else if (["KATMIND", "KATRIND", "KBSMIND", "PPMI"].includes(catInput)) {
-      targetDivision = "key_account";
-    } else if (["KATR", "TERAREQ", "KILL", "KTR"].includes(catInput)) {
-      targetDivision = "technical_support";
-    }
+    // Determine target division dynamically from official category rules
+    const targetDivision: DivisionId = getRecommendedDivision(catInput);
 
     const newTicket: UnifiedTicket = {
       id: newId,
