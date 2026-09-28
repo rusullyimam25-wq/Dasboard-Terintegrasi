@@ -40,6 +40,60 @@ function getNowDateTimeLocal(): string {
   return `${year}-${month}-${day}T${hours}:${minutes}`;
 }
 
+function parseTicketDate(dateStr?: string): Date | null {
+  if (!dateStr) return null;
+  let d = new Date(dateStr);
+  if (!isNaN(d.getTime())) return d;
+  if (typeof dateStr === "string" && dateStr.includes(" ")) {
+    d = new Date(dateStr.replace(" ", "T"));
+    if (!isNaN(d.getTime())) return d;
+  }
+  return null;
+}
+
+function formatTicketDateTime(dateStr?: string): string {
+  if (!dateStr) return "-";
+  try {
+    const d = parseTicketDate(dateStr);
+    if (!d) return dateStr;
+    return d.toLocaleDateString("id-ID", {
+      day: "numeric",
+      month: "short",
+      year: "numeric",
+      hour: "2-digit",
+      minute: "2-digit",
+    });
+  } catch {
+    return dateStr;
+  }
+}
+
+function getChannelBadge(channel?: string): { label: string; icon: string; bg: string; color: string; border: string } {
+  const ch = (channel || "").toLowerCase();
+  if (ch.includes("wa") || ch.includes("whatsapp")) {
+    return { label: "WhatsApp", icon: "💬", bg: "#ECFDF5", color: "#047857", border: "#A7F3D0" };
+  }
+  if (ch.includes("phone") || ch.includes("telepon") || ch.includes("telp")) {
+    return { label: "Phone", icon: "📞", bg: "#EFF6FF", color: "#1D4ED8", border: "#BFDBFE" };
+  }
+  if (ch.includes("email") || ch.includes("mail")) {
+    return { label: "Email", icon: "✉️", bg: "#FFFBEB", color: "#B45309", border: "#FDE68A" };
+  }
+  if (ch.includes("walk") || ch.includes("loket") || ch.includes("tatap")) {
+    return { label: "Walk In", icon: "🏢", bg: "#F5F3FF", color: "#6D28D9", border: "#DDD6FE" };
+  }
+  if (ch.includes("contact") || ch.includes("call center") || ch.includes("call")) {
+    return { label: "Contact Center", icon: "🎧", bg: "#F0F9FF", color: "#0369A1", border: "#BAE6FD" };
+  }
+  if (ch.includes("mobile") || ch.includes("app")) {
+    return { label: "Mobile App", icon: "📱", bg: "#EEF2FF", color: "#4338CA", border: "#C7D2FE" };
+  }
+  if (ch.includes("medsos") || ch.includes("sosial") || ch.includes("social")) {
+    return { label: "Media Sosial", icon: "🌐", bg: "#FFF1F2", color: "#BE123C", border: "#FECDD3" };
+  }
+  return { label: channel || "CS Intake", icon: "📥", bg: "#F1F5F9", color: "#334155", border: "#CBD5E1" };
+}
+
 export function renderCustomerServiceDashboard(container: HTMLElement): () => void {
   let tickets: UnifiedTicket[] = loadAllUnifiedTickets();
   let filterDivision: "all" | DivisionId | "unassigned" | "selesai" = "all";
@@ -47,6 +101,123 @@ export function renderCustomerServiceDashboard(container: HTMLElement): () => vo
   let formOpen = true;
   let activeCsTab: "analytics" | "moving_avg" | "operational" =
     (localStorage.getItem("aetra_cs_active_view") as any) || "analytics";
+
+  // Date Range Timeline Filter State
+  type DatePreset = "all" | "today" | "yesterday" | "last7" | "last30" | "thisMonth" | "custom";
+  let dateFilterPreset: DatePreset = "all";
+  let customStartDate: string = "";
+  let customEndDate: string = "";
+
+  function initCustomDatesIfEmpty() {
+    if (!customStartDate || !customEndDate) {
+      const now = new Date();
+      const prior7 = new Date(now.getTime() - 6 * 24 * 3600 * 1000);
+      const toYmd = (d: Date) => {
+        const y = d.getFullYear();
+        const m = String(d.getMonth() + 1).padStart(2, "0");
+        const day = String(d.getDate()).padStart(2, "0");
+        return `${y}-${m}-${day}`;
+      };
+      if (!customEndDate) customEndDate = toYmd(now);
+      if (!customStartDate) customStartDate = toYmd(prior7);
+    }
+  }
+
+  function checkTicketMatchesPreset(t: UnifiedTicket, preset: DatePreset): boolean {
+    if (preset === "all") return true;
+    const tDate = parseTicketDate(t.receivedAt);
+    if (!tDate) return true;
+
+    const now = new Date();
+    const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0, 0);
+    const endOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59, 999);
+
+    if (preset === "today") {
+      return tDate >= startOfToday && tDate <= endOfToday;
+    }
+
+    if (preset === "yesterday") {
+      const startOfYesterday = new Date(startOfToday.getTime() - 24 * 3600 * 1000);
+      const endOfYesterday = new Date(startOfToday.getTime() - 1);
+      return tDate >= startOfYesterday && tDate <= endOfYesterday;
+    }
+
+    if (preset === "last7") {
+      const start7 = new Date(startOfToday.getTime() - 6 * 24 * 3600 * 1000);
+      return tDate >= start7 && tDate <= endOfToday;
+    }
+
+    if (preset === "last30") {
+      const start30 = new Date(startOfToday.getTime() - 29 * 24 * 3600 * 1000);
+      return tDate >= start30 && tDate <= endOfToday;
+    }
+
+    if (preset === "thisMonth") {
+      const startMonth = new Date(now.getFullYear(), now.getMonth(), 1, 0, 0, 0, 0);
+      const endMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59, 999);
+      return tDate >= startMonth && tDate <= endMonth;
+    }
+
+    if (preset === "custom") {
+      let ok = true;
+      if (customStartDate) {
+        const [sy, sm, sd] = customStartDate.split("-").map(Number);
+        const sDate = new Date(sy, sm - 1, sd, 0, 0, 0, 0);
+        if (tDate < sDate) ok = false;
+      }
+      if (customEndDate) {
+        const [ey, em, ed] = customEndDate.split("-").map(Number);
+        const eDate = new Date(ey, em - 1, ed, 23, 59, 59, 999);
+        if (tDate > eDate) ok = false;
+      }
+      return ok;
+    }
+
+    return true;
+  }
+
+  function matchesDateFilter(t: UnifiedTicket): boolean {
+    return checkTicketMatchesPreset(t, dateFilterPreset);
+  }
+
+  function getPresetTicketCount(preset: DatePreset): number {
+    if (preset === "all") return tickets.length;
+    return tickets.filter((t) => checkTicketMatchesPreset(t, preset)).length;
+  }
+
+  function getActiveTimelineLabel(): string {
+    const now = new Date();
+    if (dateFilterPreset === "all") return "Semua Waktu (Seluruh Riwayat)";
+    if (dateFilterPreset === "today") {
+      return `Hari Ini (${now.toLocaleDateString("id-ID", { day: "numeric", month: "short", year: "numeric" })})`;
+    }
+    if (dateFilterPreset === "yesterday") {
+      const yesterday = new Date(now.getTime() - 24 * 3600 * 1000);
+      return `Kemarin (${yesterday.toLocaleDateString("id-ID", { day: "numeric", month: "short", year: "numeric" })})`;
+    }
+    if (dateFilterPreset === "last7") {
+      const start7 = new Date(now.getTime() - 6 * 24 * 3600 * 1000);
+      return `7 Hari Terakhir (${start7.toLocaleDateString("id-ID", { day: "numeric", month: "short" })} - ${now.toLocaleDateString("id-ID", { day: "numeric", month: "short", year: "numeric" })})`;
+    }
+    if (dateFilterPreset === "last30") {
+      const start30 = new Date(now.getTime() - 29 * 24 * 3600 * 1000);
+      return `30 Hari Terakhir (${start30.toLocaleDateString("id-ID", { day: "numeric", month: "short" })} - ${now.toLocaleDateString("id-ID", { day: "numeric", month: "short", year: "numeric" })})`;
+    }
+    if (dateFilterPreset === "thisMonth") {
+      return `Bulan Ini (${now.toLocaleDateString("id-ID", { month: "long", year: "numeric" })})`;
+    }
+    if (dateFilterPreset === "custom") {
+      if (customStartDate && customEndDate) {
+        return `Rentang Kustom (${customStartDate} s/d ${customEndDate})`;
+      } else if (customStartDate) {
+        return `Mulai Dari (${customStartDate})`;
+      } else if (customEndDate) {
+        return `Sampai Tanggal (${customEndDate})`;
+      }
+      return "Rentang Kustom (Belum Ditetapkan)";
+    }
+    return "Rentang Waktu";
+  }
 
   // New ticket state matching Image 1
   let newCaseId = generateRandom10DigitCaseId();
@@ -85,9 +256,10 @@ export function renderCustomerServiceDashboard(container: HTMLElement): () => vo
     newAddress = "Jl. Raya Serang Km 14 No. 42, RT 03/RW 01";
     newArea = "Cikupa";
     newCategory = "BPPD";
+    newChannel = "WhatsApp CS";
     newTargetDivision = getRecommendedDivision("BPPD");
     newReceivedAt = getNowDateTimeLocal();
-    newDesc = "Pelanggan mengajukan permohonan penambahan pipa dinas untuk perluasan sambungan gedung usaha ruko.";
+    newDesc = "Pelanggan mengajukan permohonan penambahan pipa dinas untuk perluasan sambungan gedung usaha ruko via WhatsApp CS.";
     newCoords = "-6.1783, 106.6319";
     newUrgent = false;
     render();
@@ -101,6 +273,7 @@ export function renderCustomerServiceDashboard(container: HTMLElement): () => vo
     const addrEl = document.getElementById("cs-address") as HTMLInputElement;
     const areaEl = document.getElementById("cs-area") as HTMLSelectElement;
     const catEl = document.getElementById("cs-category") as HTMLSelectElement;
+    const channelEl = document.getElementById("cs-channel") as HTMLSelectElement;
     const recvEl = document.getElementById("cs-received-at") as HTMLInputElement;
     const descEl = document.getElementById("cs-desc") as HTMLTextAreaElement;
     const coordsEl = document.getElementById("cs-coords") as HTMLInputElement;
@@ -113,6 +286,7 @@ export function renderCustomerServiceDashboard(container: HTMLElement): () => vo
     const addrVal = addrEl?.value.trim() || newAddress.trim() || `Area ${areaEl?.value || "Cikupa"}`;
     const areaVal = areaEl?.value || newArea || "Cikupa";
     const catVal = catEl?.value || newCategory || "BPPD";
+    const channelVal = channelEl?.value || newChannel || "WhatsApp CS";
     const recvVal = recvEl?.value || newReceivedAt || getNowDateTimeLocal();
     const descVal = descEl?.value.trim() || newDesc.trim() || "Detail komplain dicatat oleh Customer Service.";
     const coordsVal = coordsEl?.value.trim() || newCoords.trim() || "-6.1783, 106.6319";
@@ -151,12 +325,12 @@ export function renderCustomerServiceDashboard(container: HTMLElement): () => vo
       urgent: urgentVal,
       coords: coordsVal,
       receivedAt: recvVal ? new Date(recvVal).toISOString() : new Date().toISOString(),
-      intakeChannel: newChannel,
+      intakeChannel: channelVal,
       targetDivision,
       distributionStatus: "distributed",
       distributedAt: new Date().toISOString(),
       distributedBy: "Putri Delia (CS Dispatcher)",
-      distributionNotes: `Tiket kasus [${catVal}] otomatis dialirkan ke ${DIVISIONS[targetDivision].name}.`,
+      distributionNotes: `Tiket kasus [${catVal}] via ${channelVal} dialirkan ke ${DIVISIONS[targetDivision].name}.`,
     };
 
     saveSingleTicket(newTicket);
@@ -171,6 +345,7 @@ export function renderCustomerServiceDashboard(container: HTMLElement): () => vo
     newDesc = "";
     newCoords = "";
     newUrgent = false;
+    newChannel = "WhatsApp CS";
     newReceivedAt = getNowDateTimeLocal();
 
     // @ts-ignore
@@ -311,12 +486,15 @@ export function renderCustomerServiceDashboard(container: HTMLElement): () => vo
     const wrapper = document.createElement("div");
     wrapper.style.cssText = "max-width: 1520px; margin: 0 auto; padding: 16px; display: flex; flex-direction: column; gap: 16px;";
 
+    // Calculate date-filtered tickets
+    const dateFilteredTickets = tickets.filter(matchesDateFilter);
     const totalTickets = tickets.length;
-    const mrCount = tickets.filter((t) => t.targetDivision === "minor_repair").length;
-    const ossCount = tickets.filter((t) => t.targetDivision === "sales_support").length;
-    const tkaCount = tickets.filter((t) => t.targetDivision === "key_account").length;
-    const tsCount = tickets.filter((t) => t.targetDivision === "technical_support").length;
-    const resolvedCount = tickets.filter((t) => t.status === "selesai").length;
+    const activeDateCount = dateFilteredTickets.length;
+    const mrCount = dateFilteredTickets.filter((t) => t.targetDivision === "minor_repair").length;
+    const ossCount = dateFilteredTickets.filter((t) => t.targetDivision === "sales_support").length;
+    const tkaCount = dateFilteredTickets.filter((t) => t.targetDivision === "key_account").length;
+    const tsCount = dateFilteredTickets.filter((t) => t.targetDivision === "technical_support").length;
+    const resolvedCount = dateFilteredTickets.filter((t) => t.status === "selesai").length;
 
     // View Navigation Bar: Executive Analytics (Power BI View) vs Operational Queue
     const viewTabNav = document.createElement("div");
@@ -422,7 +600,7 @@ export function renderCustomerServiceDashboard(container: HTMLElement): () => vo
       <span style="font-size: 14px;">📋</span>
       <span>Input & Antrean Distribusi Tiket</span>
       <span style="background: ${isOperational ? "rgba(255,255,255,0.25)" : "#E2E8F0"}; color: ${isOperational ? "#FFFFFF" : "#64748B"}; font-size: 10px; font-weight: 800; padding: 2px 6px; border-radius: 10px;">
-        ${totalTickets} Tiket
+        ${dateFilterPreset === "all" ? `${totalTickets} Tiket` : `${activeDateCount} / ${totalTickets} Tiket`}
       </span>
     `;
     operationalTabBtn.onclick = () => {
@@ -436,8 +614,16 @@ export function renderCustomerServiceDashboard(container: HTMLElement): () => vo
     leftTabGroup.appendChild(operationalTabBtn);
 
     const rightTabInfo = document.createElement("div");
-    rightTabInfo.style.cssText = "display: flex; align-items: center; gap: 8px;";
+    rightTabInfo.style.cssText = "display: flex; align-items: center; gap: 8px; flex-wrap: wrap;";
     rightTabInfo.innerHTML = `
+      ${
+        dateFilterPreset !== "all"
+          ? `<div style="font-size: 11px; font-weight: 700; color: #0284C7; background: #F0F9FF; border: 1px solid #BAE6FD; padding: 3px 8px; border-radius: 6px; display: inline-flex; align-items: center; gap: 4px;">
+              <span>🗓️ Filter:</span>
+              <span style="font-weight: 800;">${getActiveTimelineLabel()}</span>
+            </div>`
+          : ""
+      }
       <span style="font-size: 11px; color: #64748B;">Tampilan Aktif:</span>
       <span style="font-size: 11px; font-weight: 800; color: ${isAnalytics || isMovingAvg ? "#0284C7" : "#059669"}; background: ${isAnalytics || isMovingAvg ? "#F0F9FF" : "#ECFDF5"}; border: 1px solid ${isAnalytics || isMovingAvg ? "#BAE6FD" : "#A7F3D0"}; padding: 3px 8px; border-radius: 6px;">
         ${isAnalytics ? "📊 Executive BI View" : isMovingAvg ? "📈 30-Day Moving Avg Trend" : "📋 Operasional Loket & CS"}
@@ -482,13 +668,222 @@ export function renderCustomerServiceDashboard(container: HTMLElement): () => vo
       return;
     }
 
+    // =========================================================================
+    // 0. DATE RANGE SELECTOR AT THE TOP OF OPERATIONAL WORK ORDERS
+    // =========================================================================
+    const dateRangeContainer = document.createElement("div");
+    dateRangeContainer.className = "cs-date-range-selector";
+    dateRangeContainer.style.cssText = `
+      background: #FFFFFF;
+      border: 1px solid #E2E8F0;
+      border-radius: 14px;
+      padding: 14px 18px;
+      box-shadow: 0 1px 4px rgba(0,0,0,0.03);
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    `;
+
+    // Header row
+    const headerRow = document.createElement("div");
+    headerRow.style.cssText = "display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px;";
+
+    const titleGroup = document.createElement("div");
+    titleGroup.style.cssText = "display: flex; align-items: center; gap: 10px;";
+    titleGroup.innerHTML = `
+      <div style="width: 36px; height: 36px; border-radius: 10px; background: #F0F9FF; border: 1px solid #BAE6FD; display: flex; align-items: center; justify-content: center; font-size: 18px; color: #0284C7; flex-shrink: 0;">
+        🗓️
+      </div>
+      <div>
+        <div style="font-size: 13px; font-weight: 800; color: #0F172A; display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
+          <span>Filter Rentang Waktu (Timeline Selector)</span>
+          <span style="font-size: 10.5px; font-weight: 800; background: ${dateFilterPreset !== "all" ? "#0284C7" : "#F1F5F9"}; color: ${dateFilterPreset !== "all" ? "#FFFFFF" : "#475569"}; padding: 2px 7px; border-radius: 10px;">
+            ${activeDateCount} dari ${totalTickets} WO
+          </span>
+        </div>
+        <div style="font-size: 11px; color: #64748B; margin-top: 1px;">
+          Saring antrean Work Order yang ditampilkan berdasarkan tanggal penerimaan komplain pelanggan
+        </div>
+      </div>
+    `;
+
+    const statusBadgeGroup = document.createElement("div");
+    statusBadgeGroup.style.cssText = "display: flex; align-items: center; gap: 8px; flex-wrap: wrap;";
+
+    const isFiltered = dateFilterPreset !== "all";
+    statusBadgeGroup.innerHTML = `
+      <div style="font-size: 11px; font-weight: 700; color: ${isFiltered ? "#0369A1" : "#475569"}; background: ${isFiltered ? "#F0F9FF" : "#F8FAFC"}; border: 1px solid ${isFiltered ? "#BAE6FD" : "#E2E8F0"}; padding: 4px 10px; border-radius: 8px; display: inline-flex; align-items: center; gap: 5px;">
+        <span>${isFiltered ? "📌 Filter Aktif:" : "🌐 Periode:"}</span>
+        <span style="font-weight: 800; color: ${isFiltered ? "#0284C7" : "#0F172A"};">${getActiveTimelineLabel()}</span>
+      </div>
+      ${
+        isFiltered
+          ? `<button type="button" class="btn-reset-date-top" style="padding: 4px 10px; font-size: 11px; font-weight: 700; background: #FEF2F2; border: 1px solid #FECACA; color: #DC2626; border-radius: 8px; cursor: pointer; display: inline-flex; align-items: center; gap: 4px; transition: background 0.15s ease;">
+              <span>✕</span> Reset Timeline
+            </button>`
+          : ""
+      }
+    `;
+
+    const resetBtnTop = statusBadgeGroup.querySelector(".btn-reset-date-top") as HTMLButtonElement;
+    if (resetBtnTop) {
+      resetBtnTop.onclick = () => {
+        dateFilterPreset = "all";
+        customStartDate = "";
+        customEndDate = "";
+        render();
+      };
+    }
+
+    headerRow.appendChild(titleGroup);
+    headerRow.appendChild(statusBadgeGroup);
+    dateRangeContainer.appendChild(headerRow);
+
+    // Presets Buttons Row
+    const presetButtonsRow = document.createElement("div");
+    presetButtonsRow.style.cssText = "display: flex; align-items: center; gap: 6px; flex-wrap: wrap;";
+
+    const presetsConfig: { id: DatePreset; label: string; icon: string }[] = [
+      { id: "all", label: "Semua Waktu", icon: "🌐" },
+      { id: "today", label: "Hari Ini", icon: "⚡" },
+      { id: "yesterday", label: "Kemarin", icon: "⏳" },
+      { id: "last7", label: "7 Hari Terakhir", icon: "🗓️" },
+      { id: "last30", label: "30 Hari Terakhir", icon: "📆" },
+      { id: "thisMonth", label: "Bulan Ini", icon: "🏢" },
+      { id: "custom", label: "Rentang Kustom", icon: "⚙️" },
+    ];
+
+    presetsConfig.forEach((cfg) => {
+      const btn = document.createElement("button");
+      btn.type = "button";
+      const isSelected = dateFilterPreset === cfg.id;
+      const count = getPresetTicketCount(cfg.id);
+
+      btn.style.cssText = `
+        padding: 7px 12px;
+        font-size: 11.5px;
+        font-weight: 700;
+        border-radius: 8px;
+        cursor: pointer;
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        transition: all 0.15s ease;
+        border: ${isSelected ? "1px solid #0284C7" : "1px solid #CBD5E1"};
+        background: ${isSelected ? "#0284C7" : "#FFFFFF"};
+        color: ${isSelected ? "#FFFFFF" : "#334155"};
+        box-shadow: ${isSelected ? "0 2px 6px rgba(2,132,199,0.25)" : "none"};
+      `;
+      btn.innerHTML = `
+        <span>${cfg.icon}</span>
+        <span>${cfg.label}</span>
+        ${
+          cfg.id !== "custom"
+            ? `<span style="background: ${isSelected ? "rgba(255,255,255,0.25)" : "#F1F5F9"}; color: ${isSelected ? "#FFFFFF" : "#475569"}; font-size: 10px; font-weight: 800; padding: 1px 6px; border-radius: 8px;">
+                ${count}
+              </span>`
+            : `<span style="font-size: 10px;">${isSelected ? "▲" : "▼"}</span>`
+        }
+      `;
+
+      btn.onclick = () => {
+        if (cfg.id === "custom") {
+          initCustomDatesIfEmpty();
+          dateFilterPreset = "custom";
+        } else {
+          dateFilterPreset = cfg.id;
+        }
+        render();
+      };
+
+      presetButtonsRow.appendChild(btn);
+    });
+
+    dateRangeContainer.appendChild(presetButtonsRow);
+
+    // Custom Date Range Inputs Box (if custom is selected)
+    if (dateFilterPreset === "custom") {
+      initCustomDatesIfEmpty();
+
+      const customRangeBox = document.createElement("div");
+      customRangeBox.style.cssText = `
+        background: #F8FAFC;
+        border: 1px solid #CBD5E1;
+        border-radius: 10px;
+        padding: 12px 14px;
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        flex-wrap: wrap;
+      `;
+
+      customRangeBox.innerHTML = `
+        <div style="display: flex; align-items: center; gap: 6px;">
+          <span style="font-size: 12px; font-weight: 700; color: #475569;">📅 Dari Tanggal:</span>
+          <input type="date" id="cs-filter-start-date" value="${customStartDate}" style="padding: 6px 10px; border-radius: 6px; border: 1px solid #CBD5E1; font-size: 12px; font-family: inherit; color: #1E293B; background: #FFFFFF;" />
+        </div>
+        <div style="display: flex; align-items: center; gap: 6px;">
+          <span style="font-size: 12px; font-weight: 700; color: #475569;">Sampai:</span>
+          <input type="date" id="cs-filter-end-date" value="${customEndDate}" style="padding: 6px 10px; border-radius: 6px; border: 1px solid #CBD5E1; font-size: 12px; font-family: inherit; color: #1E293B; background: #FFFFFF;" />
+        </div>
+        <div style="display: flex; align-items: center; gap: 6px;">
+          <button type="button" id="cs-btn-apply-custom-date" style="padding: 6px 14px; font-size: 12px; font-weight: 800; background: #0284C7; color: #FFFFFF; border: none; border-radius: 6px; cursor: pointer; display: inline-flex; align-items: center; gap: 4px; box-shadow: 0 1px 3px rgba(2,132,199,0.3);">
+            <span>✓</span> Terapkan Filter
+          </button>
+          <button type="button" id="cs-btn-reset-custom-date" style="padding: 6px 10px; font-size: 11.5px; font-weight: 600; background: #FFFFFF; color: #64748B; border: 1px solid #CBD5E1; border-radius: 6px; cursor: pointer;">
+            Reset Tanggal
+          </button>
+        </div>
+        <div style="font-size: 11px; color: #64748B; margin-left: auto;">
+          💡 Menampilkan Work Order yang diterima dalam rentang tanggal di atas
+        </div>
+      `;
+
+      const applyBtn = customRangeBox.querySelector("#cs-btn-apply-custom-date") as HTMLButtonElement;
+      const resetBtn = customRangeBox.querySelector("#cs-btn-reset-custom-date") as HTMLButtonElement;
+      const sInp = customRangeBox.querySelector("#cs-filter-start-date") as HTMLInputElement;
+      const eInp = customRangeBox.querySelector("#cs-filter-end-date") as HTMLInputElement;
+
+      if (applyBtn) {
+        applyBtn.onclick = () => {
+          if (sInp && eInp) {
+            customStartDate = sInp.value;
+            customEndDate = eInp.value;
+            dateFilterPreset = "custom";
+            render();
+          }
+        };
+      }
+
+      if (resetBtn) {
+        resetBtn.onclick = () => {
+          dateFilterPreset = "all";
+          customStartDate = "";
+          customEndDate = "";
+          render();
+        };
+      }
+
+      dateRangeContainer.appendChild(customRangeBox);
+    }
+
+    wrapper.appendChild(dateRangeContainer);
+
     // Stats Bar
     if (isViewItemVisible("customer_service", "cs_stats_cards")) {
       const statsRow = document.createElement("div");
       statsRow.style.cssText = "display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 12px;";
 
+      const isFilteredByDate = dateFilterPreset !== "all";
       const statsData = [
-        { label: "Total Komplain Masuk", count: totalTickets, icon: "📥", color: "#0284C7", bg: "#EFF6FF" },
+        {
+          label: isFilteredByDate ? `Komplain (${getActiveTimelineLabel()})` : "Total Komplain Masuk",
+          count: activeDateCount,
+          subtext: isFilteredByDate ? `dari ${totalTickets} total riwayat` : "seluruh periode",
+          icon: "📥",
+          color: "#0284C7",
+          bg: "#EFF6FF",
+        },
         { label: "Ke Minor Repair", count: mrCount, icon: "🛠️", color: "#D97706", bg: "#FFFBEB" },
         { label: "Ke Sales Support", count: ossCount, icon: "💼", color: "#059669", bg: "#ECFDF5" },
         { label: "Ke Key Account (Industri)", count: tkaCount, icon: "🏢", color: "#7C3AED", bg: "#F5F3FF" },
@@ -649,25 +1044,68 @@ export function renderCustomerServiceDashboard(container: HTMLElement): () => vo
             </div>
           </div>
 
-          <!-- BARIS 3: 2 Kolom (CASE Keluhan & Waktu Diterima) -->
-          <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <!-- BARIS 3: 3 Kolom (CASE Keluhan, Saluran Komplain, Waktu Diterima) -->
+          <div class="grid grid-cols-1 lg:grid-cols-3 gap-4">
+            <!-- Kolom 1: CASE Keluhan -->
             <div>
               <div class="flex items-center justify-between mb-1">
-                <label class="block text-xs font-semibold text-slate-700">CASE Keluhan (Pilih Jenis Case)</label>
+                <label class="block text-xs font-semibold text-slate-700">CASE Keluhan (Pilih Jenis Case) *</label>
                 <span id="cs-routing-badge" class="text-[10px] font-bold text-sky-700 bg-sky-50 px-2 py-0.5 rounded border border-sky-200">
                   Rekomendasi: ${DIVISIONS[newTargetDivision].name}
                 </span>
               </div>
-              <select id="cs-category" class="w-full px-3 py-2 bg-white border border-slate-300 rounded-lg text-xs text-slate-800 focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500">
+              <select id="cs-category" class="w-full px-3 py-2 bg-white border border-slate-300 rounded-lg text-xs text-slate-800 focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 font-medium">
                 ${AETRA_CASE_CATEGORIES.map(
                   (c) => `<option value="${c.key}" ${newCategory === c.key ? "selected" : ""}>[${c.key}] ${c.name}</option>`
                 ).join("")}
               </select>
             </div>
+
+            <!-- Kolom 2: Saluran Komplain (Darimana Komplain Disampaikan) -->
             <div>
-              <label class="block text-xs font-semibold text-slate-700 mb-1">Waktu Diterima</label>
+              <div class="flex items-center justify-between mb-1">
+                <label class="block text-xs font-semibold text-slate-700">Saluran Komplain (Darimana Disampaikan) *</label>
+                <span class="text-[10px] font-bold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200" id="cs-channel-label-preview">
+                  ${newChannel}
+                </span>
+              </div>
+              <select id="cs-channel" class="w-full px-3 py-2 bg-white border border-slate-300 rounded-lg text-xs text-slate-800 font-medium focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500">
+                <option value="WhatsApp CS" ${newChannel === "WhatsApp CS" ? "selected" : ""}>💬 WhatsApp (WA)</option>
+                <option value="Phone" ${newChannel === "Phone" || newChannel === "Telepon / Phone" ? "selected" : ""}>📞 Phone (Telepon Kantor)</option>
+                <option value="Email" ${newChannel === "Email" ? "selected" : ""}>✉️ Email Layanan Pelanggan</option>
+                <option value="Walk In" ${newChannel === "Walk In" || newChannel === "Loket Kantor" ? "selected" : ""}>🏢 Walk In (Datang Langsung / Loket)</option>
+                <option value="Contact Center" ${newChannel === "Contact Center" || newChannel === "Call Center 24 Jam" ? "selected" : ""}>🎧 Contact Center (Call Center 24 Jam)</option>
+                <option value="Mobile App" ${newChannel === "Mobile App" ? "selected" : ""}>📱 Mobile App AETRA</option>
+                <option value="Media Sosial" ${newChannel === "Media Sosial" ? "selected" : ""}>🌐 Media Sosial</option>
+              </select>
+              <!-- Shortcut Cepat Pilihan Saluran -->
+              <div class="flex items-center gap-1 mt-1.5 flex-wrap">
+                <button type="button" class="btn-channel-chip px-2 py-0.5 text-[10px] font-bold rounded border transition cursor-pointer ${newChannel === 'WhatsApp CS' ? 'bg-emerald-100 text-emerald-800 border-emerald-300' : 'bg-slate-50 text-slate-600 border-slate-200 hover:bg-slate-100'}" data-channel="WhatsApp CS">
+                  💬 WA
+                </button>
+                <button type="button" class="btn-channel-chip px-2 py-0.5 text-[10px] font-bold rounded border transition cursor-pointer ${newChannel === 'Phone' ? 'bg-blue-100 text-blue-800 border-blue-300' : 'bg-slate-50 text-slate-600 border-slate-200 hover:bg-slate-100'}" data-channel="Phone">
+                  📞 Phone
+                </button>
+                <button type="button" class="btn-channel-chip px-2 py-0.5 text-[10px] font-bold rounded border transition cursor-pointer ${newChannel === 'Email' ? 'bg-amber-100 text-amber-800 border-amber-300' : 'bg-slate-50 text-slate-600 border-slate-200 hover:bg-slate-100'}" data-channel="Email">
+                  ✉️ Email
+                </button>
+                <button type="button" class="btn-channel-chip px-2 py-0.5 text-[10px] font-bold rounded border transition cursor-pointer ${newChannel === 'Walk In' ? 'bg-purple-100 text-purple-800 border-purple-300' : 'bg-slate-50 text-slate-600 border-slate-200 hover:bg-slate-100'}" data-channel="Walk In">
+                  🏢 Walk In
+                </button>
+                <button type="button" class="btn-channel-chip px-2 py-0.5 text-[10px] font-bold rounded border transition cursor-pointer ${newChannel === 'Contact Center' ? 'bg-sky-100 text-sky-800 border-sky-300' : 'bg-slate-50 text-slate-600 border-slate-200 hover:bg-slate-100'}" data-channel="Contact Center">
+                  🎧 Contact Center
+                </button>
+              </div>
+            </div>
+
+            <!-- Kolom 3: Waktu Diterima -->
+            <div>
+              <label class="block text-xs font-semibold text-slate-700 mb-1">Waktu Diterima *</label>
               <div class="relative">
                 <input type="datetime-local" id="cs-received-at" value="${newReceivedAt}" class="w-full px-3 py-2 bg-white border border-slate-300 rounded-lg text-xs text-slate-800 focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500" />
+              </div>
+              <div class="text-[10px] text-slate-400 mt-1">
+                Waktu pelanggan menyampaikan laporan ke CS
               </div>
             </div>
           </div>
@@ -735,6 +1173,41 @@ export function renderCustomerServiceDashboard(container: HTMLElement): () => vo
           };
         }
 
+        const channelSelect = document.getElementById("cs-channel") as HTMLSelectElement;
+        const channelChips = formCard.querySelectorAll(".btn-channel-chip") as NodeListOf<HTMLButtonElement>;
+        const channelPreview = document.getElementById("cs-channel-label-preview");
+
+        const updateChannelUI = (val: string) => {
+          newChannel = val;
+          if (channelSelect) channelSelect.value = val;
+          if (channelPreview) {
+            const icon = val.includes("WhatsApp") ? "💬" : val.includes("Phone") ? "📞" : val.includes("Email") ? "✉️" : val.includes("Walk") ? "🏢" : val.includes("Contact") ? "🎧" : "📥";
+            channelPreview.innerText = `${icon} ${val}`;
+          }
+          channelChips.forEach((chip) => {
+            const cVal = chip.getAttribute("data-channel");
+            if (cVal === val) {
+              chip.className = "btn-channel-chip px-2 py-0.5 text-[10px] font-bold rounded border transition cursor-pointer bg-sky-100 text-sky-800 border-sky-300 shadow-xs";
+            } else {
+              chip.className = "btn-channel-chip px-2 py-0.5 text-[10px] font-bold rounded border transition cursor-pointer bg-slate-50 text-slate-600 border-slate-200 hover:bg-slate-100";
+            }
+          });
+        };
+
+        if (channelSelect) {
+          channelSelect.onchange = (e: any) => {
+            updateChannelUI(e.target.value);
+          };
+        }
+
+        channelChips.forEach((chip) => {
+          chip.onclick = (e) => {
+            e.preventDefault();
+            const ch = chip.getAttribute("data-channel");
+            if (ch) updateChannelUI(ch);
+          };
+        });
+
         const submitBtn = document.getElementById("btn-submit-complaint") as HTMLButtonElement;
         if (submitBtn) {
           submitBtn.onclick = () => submitNewComplaint();
@@ -760,7 +1233,7 @@ export function renderCustomerServiceDashboard(container: HTMLElement): () => vo
       tabGroup.style.cssText = "display: flex; gap: 4px; background: #FFFFFF; padding: 4px; border-radius: 10px; border: 1px solid #E2E8F0; overflow-x: auto;";
 
       const filterTabs: { id: typeof filterDivision; label: string; count: number }[] = [
-        { id: "all", label: "Semua Komplain", count: totalTickets },
+        { id: "all", label: "Semua Komplain", count: activeDateCount },
         { id: "minor_repair", label: "🛠️ Minor Repair", count: mrCount },
         { id: "sales_support", label: "💼 Sales Support", count: ossCount },
         { id: "key_account", label: "🏢 Key Account", count: tkaCount },
@@ -809,8 +1282,8 @@ export function renderCustomerServiceDashboard(container: HTMLElement): () => vo
       wrapper.appendChild(filterRow);
     }
 
-    // Filter tickets
-    let filtered = tickets;
+    // Filter tickets based on timeline first, then division and search query
+    let filtered = dateFilteredTickets;
     if (filterDivision === "selesai") {
       filtered = filtered.filter((t) => t.status === "selesai");
     } else if (filterDivision !== "all") {
@@ -827,7 +1300,8 @@ export function renderCustomerServiceDashboard(container: HTMLElement): () => vo
           t.meterId.toLowerCase().includes(q) ||
           t.address.toLowerCase().includes(q) ||
           t.area.toLowerCase().includes(q) ||
-          t.category.toLowerCase().includes(q)
+          t.category.toLowerCase().includes(q) ||
+          (t.intakeChannel && t.intakeChannel.toLowerCase().includes(q))
       );
     }
 
@@ -837,11 +1311,30 @@ export function renderCustomerServiceDashboard(container: HTMLElement): () => vo
 
     if (filtered.length === 0) {
       tableCard.innerHTML = `
-        <div style="text-align: center; padding: 40px; color: #94A3B8;">
-          <div style="font-size: 32px; margin-bottom: 8px;">📭</div>
-          <div style="font-size: 13px; font-weight: 700;">Tidak ada komplain yang cocok dengan filter.</div>
+        <div style="text-align: center; padding: 48px 20px; color: #94A3B8;">
+          <div style="font-size: 38px; margin-bottom: 8px;">🗓️</div>
+          <div style="font-size: 14px; font-weight: 800; color: #1E293B;">Tidak Ada Komplain Pada Periode Ini</div>
+          <div style="font-size: 12px; color: #64748B; margin-top: 4px; max-width: 440px; margin-left: auto; margin-right: auto; line-height: 1.45;">
+            Tidak ditemukan Work Order pada periode <b>${getActiveTimelineLabel()}</b>${filterDivision !== "all" ? ` untuk divisi terpilih` : ""}${searchQuery ? ` dengan pencarian "${searchQuery}"` : ""}.
+          </div>
+          ${
+            dateFilterPreset !== "all"
+              ? `<button type="button" class="btn-reset-timeline-empty" style="margin-top: 14px; padding: 7px 16px; background: #0284C7; color: #FFFFFF; font-weight: 800; font-size: 11.5px; border: none; border-radius: 8px; cursor: pointer; display: inline-flex; align-items: center; gap: 6px; box-shadow: 0 2px 6px rgba(2,132,199,0.3);">
+                  <span>🔄</span> Tampilkan Semua Waktu Laporan
+                </button>`
+              : ""
+          }
         </div>
       `;
+      const resetBtnEmpty = tableCard.querySelector(".btn-reset-timeline-empty") as HTMLButtonElement;
+      if (resetBtnEmpty) {
+        resetBtnEmpty.onclick = () => {
+          dateFilterPreset = "all";
+          customStartDate = "";
+          customEndDate = "";
+          render();
+        };
+      }
     } else {
       const table = document.createElement("table");
       table.style.cssText = "width: 100%; border-collapse: collapse; text-align: left; font-size: 12px;";
@@ -849,7 +1342,7 @@ export function renderCustomerServiceDashboard(container: HTMLElement): () => vo
       table.innerHTML = `
         <thead>
           <tr style="background: #F8FAFC; border-bottom: 1.5px solid #E2E8F0; color: #475569; font-size: 11px; text-transform: uppercase;">
-            <th style="padding: 10px 14px;">No. WO / Case ID</th>
+            <th style="padding: 10px 14px;">No. WO / Case ID & Tanggal</th>
             <th style="padding: 10px 14px;">Pelanggan & Lokasi</th>
             <th style="padding: 10px 14px;">Kategori & Keluhan</th>
             <th style="padding: 10px 14px;">Divisi Tujuan (Distribusi)</th>
@@ -869,6 +1362,7 @@ export function renderCustomerServiceDashboard(container: HTMLElement): () => vo
         tr.onmouseleave = () => (tr.style.background = "transparent");
 
         const divMeta = DIVISIONS[t.targetDivision] || DIVISIONS.minor_repair;
+        const chBadge = getChannelBadge(t.intakeChannel);
 
         const isDone = t.status === "selesai";
         const isProses = t.status === "proses";
@@ -877,9 +1371,15 @@ export function renderCustomerServiceDashboard(container: HTMLElement): () => vo
           <td style="padding: 12px 14px; vertical-align: top;">
             <div style="font-weight: 800; color: #0284C7; font-family: monospace;">${t.id}</div>
             <div style="font-size: 10px; color: #64748B; font-family: monospace;">#${t.caseId || t.id}</div>
-            <span style="font-size: 9.5px; background: #EFF6FF; color: #1D4ED8; padding: 1px 5px; border-radius: 4px; display: inline-block; margin-top: 3px;">
-              ${t.intakeChannel || "WhatsApp CS"}
-            </span>
+            <div style="display: flex; align-items: center; gap: 4px; flex-wrap: wrap; margin-top: 3px;">
+              <span style="font-size: 9.5px; background: ${chBadge.bg}; color: ${chBadge.color}; border: 1px solid ${chBadge.border}; padding: 1px 6px; border-radius: 4px; font-weight: 700; display: inline-flex; align-items: center; gap: 3px;" title="Saluran Pengaduan: ${t.intakeChannel || 'WhatsApp CS'}">
+                <span>${chBadge.icon}</span>
+                <span>${chBadge.label}</span>
+              </span>
+              <span style="font-size: 9.5px; background: #F1F5F9; color: #475569; padding: 1px 5px; border-radius: 4px; border: 1px solid #E2E8F0; font-family: monospace;" title="Waktu Laporan Diterima">
+                📅 ${formatTicketDateTime(t.receivedAt)}
+              </span>
+            </div>
           </td>
           <td style="padding: 12px 14px; vertical-align: top;">
             <div style="font-weight: 800; color: #0F172A;">${t.customer}</div>
